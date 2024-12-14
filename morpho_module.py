@@ -7,7 +7,7 @@ def shields_stress(j, Y, Delta, Ds):
     return j * Y / (Delta * Ds)
 
 
-def bed_celerity(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-6):
+def bed_celerity(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-8):
     # Computes the celerity of the propagation of a perturbation of the bed elvel
     # (kinematic wave approximation)
     j_epsp = energy_slope_U(U + eps, C, Y)
@@ -19,9 +19,9 @@ def bed_celerity(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-6):
     dqs_dU = (qs_epsp - qs_epsm) / (2 * eps)
 
     Fr = U / (g * Y)
-    fc = Fr < 0.9 | Fr > 1.1  # far from critical conditions
-    ncs = 0.9 <= Fr <= 1  # near critical conditions, larger than 1
-    ncl = 1 < Fr <= 1.1  # near critical conditions, smaller than 1
+    fc = (Fr < 0.9) | (Fr > 1.1)  # far from critical conditions
+    ncs = (Fr >= 0.9) & (Fr <= 1)  # near critical conditions, larger than 1
+    ncl = (Fr > 1) & (Fr <= 1.1)  # near critical conditions, smaller than 1
 
     C_eta = np.zeros_like(Fr)
     C_eta[fc] = dqs_dU[fc] * U[fc] / Y[fc] / (1 - Fr[fc] ** 2)
@@ -44,13 +44,41 @@ def compute_timestep(C_eta, CFL, dx):
     return dt
 
 
-def integrate_exner(eta, qs, qs0, dx, dt, C_eta, p):
-    M = eta.size
+def integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p):
+    # # Initialize eta_new with the same shape as eta
+    # eta_new2 = np.zeros_like(eta)
+    # eta_new2[0] = eta[0] - dt / dx * (qs[0] - qs0) / (1 - p)
+
+    # # Create boolean arrays for the conditions
+    # Cpos = C_eta > 0
+    # Cneg = C_eta <= 0
+
+    # # Update eta_new based on the conditions
+    # eta_new2[1:][Cpos[1:]] = eta[1:][Cpos[1:]] - dt / dx * (
+    #     qs[1:][Cpos[1:]] - qs[:-1][Cpos[1:]]
+    # ) / (1 - p)
+    # eta_new2[1:][Cneg[1:]] = eta[1:][Cneg[1:]] - dt / dx * (
+    #     qs[2:][Cneg[1:]] - qs[1:][Cneg[1:]]
+    # ) / (1 - p)
+
     eta_new = np.zeros_like(eta)
-    eta_new[0] = eta[0] - dt / dx * (qs[0] - qs0) / (1 - p)
-    for i in range(1, M):
+    eta_new[0] = eta[0] - dt / dx * (q_s[0] - q_s0) / (1 - p)
+    for i in range(1, eta.size):
         if C_eta[i] > 0:
-            eta_new[i] = eta[i] - dt / dx * (qs[i] - qs[i - 1]) / (1 - p)
+            eta_new[i] = eta[i] - dt / dx * (q_s[i] - q_s[i - 1]) / (1 - p)
         else:
-            eta_new[i] = eta[i] - dt / dx * (qs[i + 1] - qs[i]) / (1 - p)
+            eta_new[i] = eta[i] - dt / dx * (q_s[i + 1] - q_s[i]) / (1 - p)
     return eta_new
+
+
+def update_bed(eta, tf, Q, B, Y, C, q_s0, Delta, Ds, p, dx, CFL, dt_max=20):
+    U = Q / (B * Y)
+    j = energy_slope_U(U, C, Y)
+    taus = shields_stress(j, Y, Delta, Ds)
+    q_s = compute_qs(taus, tf, Ds, Delta, C=C)
+    C_eta = bed_celerity(U, C, Y, Delta, Ds, tf)
+    dt = compute_timestep(C_eta, CFL, dx)
+    if dt >= dt_max:
+        dt = dt_max
+    eta_new = integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p)
+    return dt, eta_new

@@ -51,11 +51,6 @@ def crit_depth(Q, B, g=9.81):
     return (Q**2 / (g * B**2)) ** (1 / 3)
 
 
-def bed_IC(S, L, num_nodes, eta_ups=100):
-    eta = np.linspace(eta_ups, eta_ups - S * L, num_nodes)
-    return eta
-
-
 def energy_slope(Q, B, C, Y, g=9.81):
     U = Q / (B * Y)
     j = energy_slope_U(U, C, Y, g=g)
@@ -67,7 +62,9 @@ def energy_slope_U(U, C, Y, g=9.81):
     return j
 
 
-def compute_profile(M, h_ups0, h_ds0, Q, B, C, Y_cr, eta, x):
+def compute_profile(h_ups0, h_ds0, Q, B, C, Y_cr, eta, x):
+    M = eta.size
+
     Y = np.zeros(M)
     Y_sub = np.zeros(M)
     Y_super = np.zeros(M)
