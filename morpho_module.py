@@ -26,7 +26,7 @@ def bed_celerity(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-8):
     C_eta = np.zeros_like(Fr)
     C_eta[fc] = dqs_dU[fc] * U[fc] / Y[fc] / (1 - Fr[fc] ** 2)
     C_eta[ncs] = (
-        U[ncl]
+        U[ncs]
         * 0.5
         * (Fr[ncs] - 1 + np.sqrt((Fr[ncs] - 1) ** 2 + 2 * dqs_dU[ncs] / Y[ncs]))
     )
@@ -45,29 +45,20 @@ def compute_timestep(C_eta, CFL, dx):
 
 
 def integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p):
-    # # Initialize eta_new with the same shape as eta
-    # eta_new2 = np.zeros_like(eta)
-    # eta_new2[0] = eta[0] - dt / dx * (qs[0] - qs0) / (1 - p)
-
-    # # Create boolean arrays for the conditions
-    # Cpos = C_eta > 0
-    # Cneg = C_eta <= 0
-
-    # # Update eta_new based on the conditions
-    # eta_new2[1:][Cpos[1:]] = eta[1:][Cpos[1:]] - dt / dx * (
-    #     qs[1:][Cpos[1:]] - qs[:-1][Cpos[1:]]
-    # ) / (1 - p)
-    # eta_new2[1:][Cneg[1:]] = eta[1:][Cneg[1:]] - dt / dx * (
-    #     qs[2:][Cneg[1:]] - qs[1:][Cneg[1:]]
-    # ) / (1 - p)
-
+    # Initialize eta_new with the same shape as eta
     eta_new = np.zeros_like(eta)
     eta_new[0] = eta[0] - dt / dx * (q_s[0] - q_s0) / (1 - p)
-    for i in range(1, eta.size):
-        if C_eta[i] > 0:
-            eta_new[i] = eta[i] - dt / dx * (q_s[i] - q_s[i - 1]) / (1 - p)
-        else:
-            eta_new[i] = eta[i] - dt / dx * (q_s[i + 1] - q_s[i]) / (1 - p)
+    eta_new[-1] = eta[-1] - dt / dx * (q_s[-1] - q_s[-2]) / (1 - p)
+
+    # Create boolean arrays for the conditions
+    Cpos = C_eta > 0
+    Cneg = C_eta <= 0
+    Cpos[0] = Cneg[0] = False
+    Cpos[-1] = Cneg[-1] = False
+
+    # Update eta_new based on the conditions
+    eta_new[Cpos] = eta[Cpos] - dt / dx * (q_s[Cpos] - q_s[np.roll(Cpos, -1)]) / (1 - p)
+    eta_new[Cneg] = eta[Cneg] - dt / dx * (q_s[np.roll(Cneg, 1)] - q_s[Cneg]) / (1 - p)
     return eta_new
 
 
@@ -78,6 +69,7 @@ def update_bed(eta, tf, Q, B, Y, C, q_s0, Delta, Ds, p, dx, CFL, dt_max=20):
     q_s = compute_qs(taus, tf, Ds, Delta, C=C)
     C_eta = bed_celerity(U, C, Y, Delta, Ds, tf)
     dt = compute_timestep(C_eta, CFL, dx)
+    dt = dt_max
     if dt >= dt_max:
         dt = dt_max
     eta_new = integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p)
