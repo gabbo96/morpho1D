@@ -1,4 +1,5 @@
 import numpy as np
+from morpholib.bedload import compute_qs
 
 
 def energy_bisec_f(Y, H_target, Q, B, eta):
@@ -96,63 +97,55 @@ def bed_IC(S, L, num_nodes, eta_ups=100):
 
 def energy_slope(Q, B, C, Y, g=9.81):
     U = Q / (B * Y)
+    j = energy_slope_U(U, C, Y, g=g)
+    return j
+
+
+def energy_slope_U(U, C, Y, g=9.81):
     j = U**2 / (C**2 * g * Y)
     return j
 
 
-def shields_stress():
-    return ...
+def shields_stress(j, Y, Delta, Ds):
+    return j * Y / (Delta * Ds)
 
 
-def phis(theta, tf, C):
-    """Computes the dimensionless transport capacity per unit width (phi)
-    given the Shields stress (theta). Different transport formulas are implemented
+def C_eta(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-6):
+    # Computes the celerity of the propagation of a perturbation of the bed elvel
+    # (kinematic wave approximation)
+    j_epsp = energy_slope_U(U + eps, C, Y)
+    j_epsm = energy_slope_U(U - eps, C, Y)
+    tau_epsp = shields_stress(j_epsp, Y, Delta, Ds)
+    tau_epsm = shields_stress(j_epsm, Y, Delta, Ds)
+    qs_epsp = compute_qs(tau_epsp, tf, Ds, Delta, C=C)
+    qs_epsm = compute_qs(tau_epsm, tf, Ds, Delta, C=C)
+    dqs_dU = (qs_epsp - qs_epsm) / (2 * eps)
 
-    Parameters
-    ----------
-    `theta` : ndarray
-        Shields stress
-    `tf` : str
-        String defining the transport formula adopted. Available options:
-        "MPM" (Meyer-Peter & Mueller, 1947), "EH" (Engelund & Hansen, 1967),
-        "P78" (Parker, 1978), "WP" (Wong&Parker, 2006).
-    `C` : float
-        Chézy coefficient. Used only if `tf`="EH"
+    Fr = U / (g * Y)
+    fc = Fr < 0.9 | Fr > 1.1  # far from critical conditions
+    ncs = 0.9 <= Fr <= 1  # near critical conditions, larger than 1
+    ncl = 1 < Fr <= 1.1  # near critical conditions, smaller than 1
 
-    Returns
-    -------
-    `phi` : ndarray
-        Dimensionless transport capacity per unit width.
-    """
-    phi = np.zeros(np.size(theta))
-    if tf == "MPM":  # Meyer-Peter and Muller (1948)
-        theta_cr = 0.047
-        nst = theta < theta_cr
-        phi[~nst] = 8 * (theta[~nst] - theta_cr) ** 1.5
-    elif tf == "EH":  # Engelund & Hansen
-        phi = 0.05 * C**2 * theta**2.5
-    elif tf == "P90":  # Parker (1990)
-        c1 = 0.0386
-        c2 = 0.853
-        c3 = 5474
-        c4 = 0.00218
-        x = theta / c1
-        phi[x >= 1] = (
-            c4
-            * (theta[x >= 1] ** 1.5)
-            * (np.exp(14.2 * (x[x >= 1] - 1) - 9.28 * (x[x >= 1] - 1) ** 2))
-        )
-        phi[x > 1.59] = c3 * c4 * theta[x > 1.59] ** 1.5 * (1 - c2 / x[x > 1.59]) ** 4.5
-        phi[x < 1] = c4 * theta[x < 1] ** 1.5 * x[x < 1] ** 14.2
-    elif tf == "P78":  # Parker (1978)
-        theta_cr = 0.03
-        nst = theta < theta_cr
-        phi[~nst] = 11.2 * theta[~nst] ** 1.5 * (1 - theta_cr / theta[~nst]) ** 4.5
-    elif tf == "WP":  # Wong&Parker (2006)
-        theta_cr = 0.0495
-        nst = theta < theta_cr
-        phi[~nst] = 3.97 * (theta[~nst] - theta_cr) ** 1.5
-    else:
-        print("error: unknown transport formula")
-        phi = None
-    return phi
+    C_eta = np.zeros_like(Fr)
+    C_eta[fc] = dqs_dU[fc] * U[fc] / Y[fc] / (1 - Fr[fc] ** 2)
+    C_eta[ncs] = (
+        U[ncl]
+        * 0.5
+        * (Fr[ncs] - 1 + np.sqrt((Fr[ncs] - 1) ** 2 + 2 * dqs_dU[ncs] / Y[ncs]))
+    )
+    C_eta[ncl] = (
+        U[ncl]
+        * 0.5
+        * (Fr[ncl] - 1 - np.sqrt((Fr[ncl] - 1) ** 2 + 2 * dqs_dU[ncl] / Y[ncl]))
+    )
+    return C_eta
+
+
+def compute_timestep(CFL, Q, B, C, Y, Delta, Ds, tf):
+    dt = CFL * dx / C_eta_max
+    return dt
+
+
+def update_bed(qs, eta, cfl):
+    eta_new = ...
+    return eta_new
