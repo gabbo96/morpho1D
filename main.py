@@ -1,7 +1,7 @@
 import os
 import json
 import matplotlib.pyplot as plt
-from module import *
+from hydro_module import *
 
 inputs_dir = "inputs_files"
 inputs_filename = "slope_decrease"
@@ -45,73 +45,13 @@ print(f"{h_ups0 = :.2f}, {h_ds0 = :.2f}")
 
 # Initialize arrays
 M = np.size(x)
-Y = np.zeros(M)
 Y_cr = np.zeros(M)
-Y_sub = np.zeros(M)
-Y_super = np.zeros(M)
-H_sub = np.zeros(M)
-H_super = np.zeros(M)
 
 for n in range(in_d["num_iter"]):
     Y_cr[:] = crit_depth(Q, B)
-    E_min = energy(Y_cr, Q, B, eta) - eta
-
-    # ------------------ First spatial loop: upstream direction ------------------ #
-    # Downstream BC
-    Y_sub[-1] = h_ds0 - eta[-1]
-    if froude(Q, B[-1], Y_sub[-1]) > 1:
-        Y_sub[-1] = Y_cr[-1]
-    H_sub[-1] = energy(Y_sub[-1], Q, B[-1], eta[-1])
-
-    # Spatial loop in upstream direction
-    for i in range(M - 2, -1, -1):
-        dx = x[i + 1] - x[i]
-        j = energy_slope(Q, B[i + 1], C, Y_sub[i + 1])
-        H_sub[i] = H_sub[i + 1] + j * dx
-
-        # Check if the specific energy is lower than the minimum for the given flow discharge
-        if H_sub[i] - eta[i] < E_min[i]:
-            Y_sub[i] = Y_cr[i] + 0.05
-            H_sub[i] = energy(Y_sub[i], Q, B[i], eta[i])
-        else:
-            YL = Y_cr[i]
-            YR = 10 * Y_cr[i]
-            Y_sub[i] = bisection(energy_bisec_f, YL, YR, (H_sub[i], Q, B[i], eta[i]))
-
-    # ----------------- Second spatial loop: downstream direction ---------------- #
-    # Upstream BC
-    Y_super[0] = h_ups0 - eta[0]
-    if froude(Q, B[0], Y_super[0]) < 1:
-        Y_super[0] = Y_cr[0]
-    H_super[0] = energy(Y_super[0], Q, B[0], eta[0])
-
-    # Spatial loop in downstream direction
-    for i in range(M - 1):
-        dx = x[i + 1] - x[i]
-        j = energy_slope(Q, B[i], C, Y_super[i])
-        H_super[i + 1] = H_super[i] - j * dx
-        # Check if the specific energy is lower than the minimum for the given flow discharge
-        if H_super[i + 1] - eta[i + 1] < E_min[i + 1]:
-            Y_super[i + 1] = Y_cr[i + 1] - 0.05
-            H_super[i + 1] = energy(Y_super[i + 1], Q, B[i + 1], eta[i + 1])
-        else:
-            YL = 1e-6
-            YR = Y_cr[i + 1]
-            Y_super[i + 1] = bisection(
-                energy_bisec_f, YL, YR, (H_super[i + 1], Q, B[i + 1], eta[i + 1])
-            )
-
-    # -------------------------- Final profile retrieval ------------------------- #
-    S_sub = spinta(Q, B, Y_sub)
-    S_super = spinta(Q, B, Y_super)
-    Y[S_sub >= S_super] = Y_sub[S_sub >= S_super]
-    Y[S_sub < S_super] = Y_super[S_sub < S_super]
+    Y = compute_profile(M, h_ups0, h_ds0, Q, B, C, Y_cr, eta, x)
 
     # Shields update and bed evolution
-
-for i in range(len(Y) - 1):
-    if Y[i] == Y_super[i] and Y[i + 1] == Y_sub[i + 1]:
-        print(f"Hydraulic jump at index {i}")
 
 # ----------------------------------- Plots ---------------------------------- #
 plt.plot(x, eta, color=bed_color, label="Bed elevation")
