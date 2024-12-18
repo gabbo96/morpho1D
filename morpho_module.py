@@ -18,7 +18,7 @@ def bed_celerity(U, C, Y, Delta, Ds, tf, g=9.81, eps=1e-8):
     qs_epsm = compute_qs(tau_epsm, tf, Ds, Delta, C=C)
     dqs_dU = (qs_epsp - qs_epsm) / (2 * eps)
 
-    Fr = U / (g * Y)
+    Fr = U / np.sqrt(g * Y)
     fc = (Fr < 0.9) | (Fr > 1.1)  # far from critical conditions
     ncs = (Fr >= 0.9) & (Fr <= 1)  # near critical conditions, larger than 1
     ncl = (Fr > 1) & (Fr <= 1.1)  # near critical conditions, smaller than 1
@@ -62,15 +62,18 @@ def integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p):
     return eta_new
 
 
-def update_bed(eta, tf, Q, B, Y, C, q_s0, Delta, Ds, p, dx, CFL, dt_max=20):
+def update_bed(
+    eta, tf, Q, B, Y, C, q_s0, Delta, Ds, p, dx, CFL, dt_max=20, use_cfl=False
+):
     U = Q / (B * Y)
     j = energy_slope_U(U, C, Y)
     taus = shields_stress(j, Y, Delta, Ds)
     q_s = compute_qs(taus, tf, Ds, Delta, C=C)
     C_eta = bed_celerity(U, C, Y, Delta, Ds, tf)
-    dt = compute_timestep(C_eta, CFL, dx)
-    dt = dt_max
-    if dt >= dt_max:
+    dt_comp = compute_timestep(C_eta, CFL, dx)
+    if use_cfl:
+        dt = dt_comp
+    else:
         dt = dt_max
     eta_new = integrate_exner(eta, q_s, q_s0, dx, dt, C_eta, p)
-    return dt, eta_new
+    return dt_comp, eta_new

@@ -1,0 +1,8 @@
+__pycache__/bisection.cpython-311.pyc
+__pycache__/hydro_module.cpython-311.pyc
+__pycache__/init_conditions.cpython-311.pyc
+__pycache__/morpho_module.cpython-311.pyc
+*.pyc
+*.csv
+*.png
+inputs.json
